@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Repositories;
 
+use App\Config\StoreCatalog;
 use PDO;
 use PDOException;
 
@@ -39,12 +40,9 @@ final class RatingRepository
             FROM ratings r
             WHERE r.product_id = ?
               AND r.status = 'APPROVED'
-              AND (
-                r.visible_all_stores = 1
-                OR EXISTS (
-                    SELECT 1 FROM rating_visible_stores v
-                    WHERE v.rating_id = r.id AND v.store_id = ?
-                )
+              AND EXISTS (
+                  SELECT 1 FROM rating_visible_stores v
+                  WHERE v.rating_id = r.id AND v.store_id = ?
               )
             ORDER BY r.created_at DESC
             SQL;
@@ -67,12 +65,9 @@ final class RatingRepository
             FROM ratings r
             WHERE r.product_id = ?
               AND r.status = 'APPROVED'
-              AND (
-                r.visible_all_stores = 1
-                OR EXISTS (
-                    SELECT 1 FROM rating_visible_stores v
-                    WHERE v.rating_id = r.id AND v.store_id = ?
-                )
+              AND EXISTS (
+                  SELECT 1 FROM rating_visible_stores v
+                  WHERE v.rating_id = r.id AND v.store_id = ?
               )
             GROUP BY r.star
             SQL;
@@ -96,12 +91,9 @@ final class RatingRepository
             FROM ratings r
             WHERE r.product_id = ?
               AND r.status = 'APPROVED'
-              AND (
-                r.visible_all_stores = 1
-                OR EXISTS (
-                    SELECT 1 FROM rating_visible_stores v
-                    WHERE v.rating_id = r.id AND v.store_id = ?
-                )
+              AND EXISTS (
+                  SELECT 1 FROM rating_visible_stores v
+                  WHERE v.rating_id = r.id AND v.store_id = ?
               )
             SQL;
         $stmt = $this->pdo->prepare($sql);
@@ -129,8 +121,8 @@ final class RatingRepository
         ?string $source,
     ): int {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO ratings (product_id, origin_store, status, star, author, text, email, source, rejection_reason_id, visible_all_stores)
-             VALUES (?, ?, \'PENDING\', ?, ?, ?, ?, ?, NULL, 1)',
+            'INSERT INTO ratings (product_id, origin_store, status, star, author, text, email, source, rejection_reason_id)
+             VALUES (?, ?, \'PENDING\', ?, ?, ?, ?, ?, NULL)',
         );
         $stmt->execute([$productId, $originStore, $star, $author, $text, $email, $source]);
 
@@ -146,32 +138,36 @@ final class RatingRepository
     }
 
     /**
-     * Set APPROVED, optional per-store visibility, optional criteria links.
+     * Set APPROVED, explicit visibility rows (subset of StoreCatalog), optional criteria links.
      *
      * @param list<int> $criteriaIds
-     * @param list<string>|null $storeIds Four-digit strings; null = all shops
+     * @param list<string>|null $storeIds Known store ids; null = all five stores
      */
     public function approve(int $ratingId, array $criteriaIds, ?array $storeIds): void
     {
+        $targets = $storeIds === null ? StoreCatalog::all() : array_values(array_unique($storeIds));
+        if ($targets === []) {
+            throw new \InvalidArgumentException('store_ids must not be empty when provided');
+        }
+        foreach ($targets as $sid) {
+            if (!StoreCatalog::isKnownStore($sid)) {
+                throw new \InvalidArgumentException('Unknown store id: ' . $sid);
+            }
+        }
+
         $this->pdo->beginTransaction();
         try {
-            $visibleAll = ($storeIds === null) ? 1 : 0;
-            if ($storeIds !== null && $storeIds === []) {
-                throw new \InvalidArgumentException('store_ids must not be empty when provided');
-            }
             $stmt = $this->pdo->prepare(
-                'UPDATE ratings SET status = \'APPROVED\', rejection_reason_id = NULL, visible_all_stores = ?, updated_at = CURRENT_TIMESTAMP(6) WHERE id = ?',
+                'UPDATE ratings SET status = \'APPROVED\', rejection_reason_id = NULL, updated_at = CURRENT_TIMESTAMP(6) WHERE id = ?',
             );
-            $stmt->execute([$visibleAll, $ratingId]);
+            $stmt->execute([$ratingId]);
 
             $this->pdo->prepare('DELETE FROM rating_visible_stores WHERE rating_id = ?')->execute([$ratingId]);
-            if ($storeIds !== null) {
-                $ins = $this->pdo->prepare(
-                    'INSERT INTO rating_visible_stores (rating_id, store_id) VALUES (?, ?)',
-                );
-                foreach ($storeIds as $sid) {
-                    $ins->execute([$ratingId, $sid]);
-                }
+            $ins = $this->pdo->prepare(
+                'INSERT INTO rating_visible_stores (rating_id, store_id) VALUES (?, ?)',
+            );
+            foreach ($targets as $sid) {
+                $ins->execute([$ratingId, $sid]);
             }
 
             $this->pdo->prepare('DELETE FROM rating_criteria_links WHERE rating_id = ?')->execute([$ratingId]);
@@ -196,7 +192,7 @@ final class RatingRepository
         $this->pdo->beginTransaction();
         try {
             $stmt = $this->pdo->prepare(
-                'UPDATE ratings SET status = \'NOT_APPROVED\', rejection_reason_id = ?, visible_all_stores = 1, updated_at = CURRENT_TIMESTAMP(6) WHERE id = ?',
+                'UPDATE ratings SET status = \'NOT_APPROVED\', rejection_reason_id = ?, updated_at = CURRENT_TIMESTAMP(6) WHERE id = ?',
             );
             $stmt->execute([$reasonId, $ratingId]);
             $this->pdo->prepare('DELETE FROM rating_visible_stores WHERE rating_id = ?')->execute([$ratingId]);

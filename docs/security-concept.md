@@ -5,7 +5,7 @@ Dieses Dokument beschreibt die im Projekt umgesetzten Schutzmaßnahmen und offen
 ## 1. Eingabevalidierung
 
 - Alle JSON-Request-Bodies für `POST`-Routen werden gegen die Dateien unter [`schemas/`](../schemas/) validiert (JSON-Schema-kompatible Regeln).
-- Pfadparameter (`store`, `productId`, `ratingId`) werden serverseitig gegen feste Muster geprüft (vierstelliger Shop, erlaubte Produkt-ID-Zeichen, positive numerische Rating-ID).
+- Pfadparameter (`store`, `productId`, `ratingId`) werden serverseitig geprüft (`store` muss eine der fünf konfigurierten IDs `0001`–`0005` sein, siehe `App\Config\StoreCatalog`; erlaubte Produkt-ID-Zeichen; positive numerische Rating-ID).
 - Query-Parameter `source` wird auf die erlaubten ENUM-Werte begrenzt oder als `NULL` gespeichert, wenn er fehlt oder leer ist.
 
 ## 2. SQL-Injection

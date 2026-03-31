@@ -50,7 +50,6 @@ CREATE TABLE ratings (
     email VARCHAR(255) NOT NULL,
     source ENUM('SHOP', 'MAIL', 'INTRANET') NULL DEFAULT NULL,
     rejection_reason_id INT UNSIGNED NULL,
-    visible_all_stores TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1 = all shops; 0 = only rows in rating_visible_stores',
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (id),
@@ -64,7 +63,7 @@ CREATE TABLE ratings (
 
 CREATE TABLE rating_visible_stores (
     rating_id BIGINT UNSIGNED NOT NULL,
-    store_id CHAR(4) NOT NULL,
+    store_id CHAR(4) NOT NULL COMMENT 'One row per assigned store (0001–0005); APPROVED ratings require at least one',
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     PRIMARY KEY (rating_id, store_id),

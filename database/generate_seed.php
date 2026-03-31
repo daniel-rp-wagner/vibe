@@ -3,9 +3,13 @@
 /**
  * Generates database/seed.sql with reference data and 100 ratings.
  * Run: php database/generate_seed.php
+ *
+ * Five storefronts: 0001–0005. Approved ratings have explicit rating_visible_stores rows only.
  */
 
 declare(strict_types=1);
+
+$stores = ['0001', '0002', '0003', '0004', '0005'];
 
 $out = fopen(__DIR__ . '/seed.sql', 'wb');
 if ($out === false) {
@@ -52,11 +56,12 @@ $sources = ['SHOP', 'MAIL', 'INTRANET', 'NULL'];
 $statuses = ['APPROVED', 'PENDING', 'NOT_APPROVED'];
 $authors = ['Anna B.', 'Max M.', 'Lisa K.', 'Tom R.', 'Sara W.'];
 
-fwrite($out, "\nINSERT INTO ratings (product_id, origin_store, status, star, author, text, email, source, rejection_reason_id, visible_all_stores) VALUES\n");
+fwrite($out, "\nINSERT INTO ratings (product_id, origin_store, status, star, author, text, email, source, rejection_reason_id) VALUES\n");
 $rows = [];
+$approvedVisibility = [];
 for ($n = 1; $n <= 100; $n++) {
     $pid = sprintf('P%03d', (($n - 1) % 20) + 1);
-    $store = str_pad((string) (($n % 10) + 1), 4, '0', STR_PAD_LEFT);
+    $store = $stores[($n - 1) % 5];
     $st = $statuses[$n % 7 === 0 ? 1 : ($n % 13 === 0 ? 2 : 0)];
     $star = ($n % 5) + 1;
     $author = $authors[$n % count($authors)];
@@ -68,17 +73,22 @@ for ($n = 1; $n <= 100; $n++) {
     if ($st === 'NOT_APPROVED') {
         $reasonSql = (string) (($n % 3) + 1);
     }
-    $vis = 1;
-    if ($st === 'APPROVED' && $n % 17 === 0) {
-        $vis = 0;
+    $rows[] = "('{$pid}','{$store}','{$st}',{$star},'" . addslashes($author) . "','{$text}','{$email}',{$srcSql},{$reasonSql})";
+
+    if ($st === 'APPROVED') {
+        $approvedVisibility[$n] = ($n % 17 === 0) ? ['0001', '0002'] : $stores;
     }
-    $rows[] = "('{$pid}','{$store}','{$st}',{$star},'" . addslashes($author) . "','{$text}','{$email}',{$srcSql},{$reasonSql},{$vis})";
 }
 fwrite($out, implode(",\n", $rows) . ";\n");
 
-// Partial visibility: approved rows with visible_all_stores=0 get two stores
-fwrite($out, "\nINSERT INTO rating_visible_stores (rating_id, store_id) SELECT id, '0001' FROM ratings WHERE visible_all_stores = 0 AND status = 'APPROVED';\n");
-fwrite($out, "INSERT INTO rating_visible_stores (rating_id, store_id) SELECT id, '0002' FROM ratings WHERE visible_all_stores = 0 AND status = 'APPROVED';\n");
+fwrite($out, "\n-- Explicit visibility: one row per store assignment (rating id = row order 1..100)\n");
+foreach ($approvedVisibility as $ratingId => $storeList) {
+    $vals = [];
+    foreach ($storeList as $sid) {
+        $vals[] = '(' . $ratingId . ',\'' . $sid . '\')';
+    }
+    fwrite($out, 'INSERT INTO rating_visible_stores (rating_id, store_id) VALUES ' . implode(',', $vals) . ";\n");
+}
 
 fwrite($out, "\nINSERT INTO rating_criteria_links (rating_id, criteria_id) SELECT id, 1 FROM ratings WHERE status = 'APPROVED' AND id % 5 = 0;\n");
 

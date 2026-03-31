@@ -195,10 +195,10 @@ components:
       name: store
       in: path
       required: true
-      description: Vierstellige numerische Shop-ID
+      description: Eine der fünf konfigurierten Shop-IDs
       schema:
         type: string
-        pattern: '^\d{4}$'
+        enum: ['0001', '0002', '0003', '0004', '0005']
     ProductId:
       name: productId
       in: path
@@ -379,10 +379,10 @@ components:
           type: array
           items:
             type: string
-            pattern: '^\d{4}$'
+            enum: ['0001', '0002', '0003', '0004', '0005']
           minItems: 1
           uniqueItems: true
-          description: Wenn gesetzt, nur diese Shops; weglassen = alle Shops
+          description: Explizite Shop-IDs; weglassen = alle fünf Shops (jeweils eine Zeile in rating_visible_stores)
 
     PostRejectBody:
       type: object

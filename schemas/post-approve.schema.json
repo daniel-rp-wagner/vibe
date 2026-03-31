@@ -20,7 +20,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^\\d{4}$"
+        "enum": ["0001", "0002", "0003", "0004", "0005"]
       },
       "minItems": 1,
       "uniqueItems": true

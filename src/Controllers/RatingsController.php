@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Config\StoreCatalog;
 use App\Events\RatingEventDispatcher;
 use App\Http\Request;
 use App\Http\Response;
@@ -184,6 +185,7 @@ final class RatingsController
             /** @var list<string> $storeIds */
             $storeIds = array_values(array_map('strval', $parsed['store_ids']));
         }
+        $resolvedStores = $storeIds ?? StoreCatalog::all();
 
         try {
             $this->ratings->approve($id, $criteria, $storeIds);
@@ -203,7 +205,7 @@ final class RatingsController
         $this->events->dispatch(RatingEventDispatcher::APPROVED, [
             'ratingId' => $id,
             'criteria' => $criteria,
-            'storeScope' => $storeIds,
+            'storeScope' => $resolvedStores,
         ]);
 
         return Response::jsonOk(['id' => $id, 'status' => 'APPROVED']);
@@ -299,10 +301,10 @@ final class RatingsController
         return Response::noContent();
     }
 
-    /** Four-digit numeric store id. */
+    /** Must be one of the five configured storefront ids. */
     private static function isValidStoreId(string $store): bool
     {
-        return preg_match('/^\d{4}$/', $store) === 1;
+        return StoreCatalog::isKnownStore($store);
     }
 
     /** Product id path segment: 1–64 safe characters. */
