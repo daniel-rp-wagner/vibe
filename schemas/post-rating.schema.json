@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rating", "author", "text", "email"],
+  "properties": {
+    "rating": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "maxLength": 255
+    }
+  }
+}

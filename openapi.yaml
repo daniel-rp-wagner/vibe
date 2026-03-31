@@ -1,0 +1,440 @@
+openapi: 3.0.3
+info:
+  title: Produktbewertungen API
+  description: |
+    Headless REST-API für Shop-Bewertungen (MACH). Alle geschäftlichen Texte der Domäne sind deutsch;
+    technische Codes und Fehlermeldungen der API sind englisch gemäß Spezifikation.
+  version: 1.0.0
+
+servers:
+  - url: /
+    description: Relativ zum Document Root (z. B. /public unter Apache)
+
+tags:
+  - name: ratings
+  - name: health
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness
+      operationId: health
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOk'
+
+  /ready:
+    get:
+      tags: [health]
+      summary: Readiness (Datenbank erreichbar)
+      operationId: ready
+      responses:
+        '200':
+          description: Datenbank OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyOk'
+        '503':
+          description: Datenbank nicht bereit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /api/ratings/{store}/{productId}:
+    get:
+      tags: [ratings]
+      summary: Bewertungen inkl. Verteilung und Durchschnitt
+      operationId: listRatings
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: Nur APPROVED und für den Shop freigegeben
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RatingsListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+
+    post:
+      tags: [ratings]
+      summary: Neue Bewertung anlegen (Status PENDING)
+      operationId: createRating
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - $ref: '#/components/parameters/ProductId'
+        - name: source
+          in: query
+          required: false
+          description: Ursprung SHOP, MAIL oder INTRANET; fehlt oder leer → NULL
+          schema:
+            type: string
+            enum: [SHOP, MAIL, INTRANET]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostRatingBody'
+      responses:
+        '201':
+          description: Erstellt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRatingEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+
+  /api/ratings/{ratingId}/approve:
+    post:
+      tags: [ratings]
+      summary: Bewertung freigeben
+      operationId: approveRating
+      security:
+        - ModerationBearer: []
+        - ModerationApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/RatingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostApproveBody'
+      responses:
+        '200':
+          description: Freigegeben
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApproveEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RatingNotFound'
+
+  /api/ratings/{ratingId}/reject:
+    post:
+      tags: [ratings]
+      summary: Bewertung ablehnen
+      operationId: rejectRating
+      security:
+        - ModerationBearer: []
+        - ModerationApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/RatingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostRejectBody'
+      responses:
+        '200':
+          description: Abgelehnt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RejectEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RatingNotFound'
+
+  /api/ratings/{ratingId}:
+    delete:
+      tags: [ratings]
+      summary: Bewertung löschen
+      operationId: deleteRating
+      security:
+        - ModerationBearer: []
+        - ModerationApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/RatingId'
+      responses:
+        '204':
+          description: Gelöscht (ohne Body)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RatingNotFound'
+
+components:
+  securitySchemes:
+    ModerationBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: Wert entspricht MODERATION_API_KEY (.env)
+    ModerationApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Alternativ zum Bearer-Token
+
+  parameters:
+    StoreId:
+      name: store
+      in: path
+      required: true
+      description: Vierstellige numerische Shop-ID
+      schema:
+        type: string
+        pattern: '^\d{4}$'
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{1,64}$'
+    RatingId:
+      name: ratingId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    BadRequest:
+      description: Validierungsfehler
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+          examples:
+            invalid:
+              value:
+                data: null
+                error:
+                  code: INVALID_REQUEST
+                  message: Validation failed
+                  details: {}
+    ProductNotFound:
+      description: Produkt nicht in der lokalen Produktliste
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    RatingNotFound:
+      description: Bewertung existiert nicht
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+    Unauthorized:
+      description: Moderationsschlüssel fehlt oder falsch
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnvelopeError'
+
+  schemas:
+    HealthOk:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ReadyOk:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ready
+
+    EnvelopeError:
+      type: object
+      required: [data, error]
+      properties:
+        data:
+          nullable: true
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - RATING_NOT_FOUND
+                - PRODUCT_NOT_FOUND
+                - INVALID_REQUEST
+                - UNAUTHORIZED
+                - INTERNAL_ERROR
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+    RatingItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        star:
+          type: integer
+          minimum: 1
+          maximum: 5
+        text:
+          type: string
+        author:
+          type: string
+        created:
+          type: string
+          example: '2019-03-13 10:48:00'
+
+    StarDistribution:
+      type: object
+      additionalProperties: false
+      properties:
+        '1': { type: integer }
+        '2': { type: integer }
+        '3': { type: integer }
+        '4': { type: integer }
+        '5': { type: integer }
+
+    RatingsListPayload:
+      type: object
+      required: [ratings, distribution, stars]
+      properties:
+        ratings:
+          type: array
+          items:
+            $ref: '#/components/schemas/RatingItem'
+        distribution:
+          $ref: '#/components/schemas/StarDistribution'
+        stars:
+          type: number
+          format: float
+          description: Durchschnitt auf eine Nachkommastelle; 0.0 wenn keine Bewertungen
+
+    RatingsListEnvelope:
+      type: object
+      required: [data, error]
+      properties:
+        data:
+          $ref: '#/components/schemas/RatingsListPayload'
+        error:
+          nullable: true
+
+    PostRatingBody:
+      type: object
+      additionalProperties: false
+      required: [rating, author, text, email]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        author:
+          type: string
+          minLength: 1
+          maxLength: 255
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        email:
+          type: string
+          format: email
+          maxLength: 255
+
+    PostApproveBody:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: APPROVED
+        criteria:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          uniqueItems: true
+          description: Optionale Kriterien-IDs (review_criteria)
+        store_ids:
+          type: array
+          items:
+            type: string
+            pattern: '^\d{4}$'
+          minItems: 1
+          uniqueItems: true
+          description: Wenn gesetzt, nur diese Shops; weglassen = alle Shops
+
+    PostRejectBody:
+      type: object
+      additionalProperties: false
+      required: [status, reason]
+      properties:
+        status:
+          type: string
+          const: NOT_APPROVED
+        reason:
+          type: integer
+          minimum: 1
+          description: ID aus rejection_reasons
+
+    CreateRatingEnvelope:
+      type: object
+      required: [data, error]
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            status:
+              type: string
+              example: PENDING
+        error:
+          nullable: true
+
+    ApproveEnvelope:
+      type: object
+      required: [data, error]
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            status:
+              type: string
+              example: APPROVED
+        error:
+          nullable: true
+
+    RejectEnvelope:
+      type: object
+      required: [data, error]
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            status:
+              type: string
+              example: NOT_APPROVED
+        error:
+          nullable: true
